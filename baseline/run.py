@@ -1,3 +1,9 @@
+import os
+os.system('pip install tqdm')
+os.system('pip install pymorphy2')
+os.system('pip install torchtext')
+os.system('pip install git+https://github.com/aatimofeev/spacy_russian_tokenizer.git')
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,11 +18,12 @@ import random
 import math
 import time
 from tqdm import tqdm
+
 nlp = Russian()
 russian_tokenizer = RussianTokenizer(nlp, MERGE_PATTERNS)
 
 TEXT = torchtext.data.Field(tokenize = net.tokenize_ru, lower=True, init_token = '<sos>', 
-            eos_token = '<eos>')
+            eos_token = '<eos>', fix_length = 20)
 fields = [('src', TEXT), ('trg', TEXT)]
 
 dialogue_data = torchtext.data.TabularDataset(
@@ -29,16 +36,6 @@ random.seed(SEED)
 torch.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 
-
-SRC = Field(tokenize = net.tokenize_ru, 
-            init_token = '<sos>', 
-            eos_token = '<eos>', 
-            lower = True)
-
-TRG = Field(tokenize = net.tokenize_ru, 
-            init_token = '<sos>', 
-            eos_token = '<eos>', 
-            lower = True)
  
 train_data, test_data = dialogue_data.split(split_ratio=0.95)
 train_data, valid_data = train_data.split(split_ratio=0.95)
@@ -53,7 +50,7 @@ BATCH_SIZE = 8
 train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
     (train_data, valid_data, test_data), 
     batch_size = BATCH_SIZE, 
-    device = device)
+    device = device, sort = False)
 
 
 INPUT_DIM = len(TEXT.vocab)
