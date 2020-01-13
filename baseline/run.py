@@ -1,94 +1,90 @@
-import os
-os.system('pip install tqdm')
-os.system('pip install pymorphy2')
-os.system('pip install torchtext')
-os.system('pip install git+https://github.com/aatimofeev/spacy_russian_tokenizer.git')
-
+from __future__ import unicode_literals, print_function, division
+from io import open
+import unicodedata
+import string
+import re
+import random
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from spacy_russian_tokenizer import RussianTokenizer, MERGE_PATTERNS
-from spacy.lang.ru import Russian
-from torchtext.datasets import TranslationDataset, Multi30k
-from torchtext.data import Field, BucketIterator
-import torchtext
-import net
-import spacy
-import random
+from torch import optim
+import torch.nn.functional as F
+from tqdm.auto import tqdm
+from nltk.tokenize import word_tokenize, wordpunct_tokenize
+from tqdm.auto import tqdm
+import pandas as pd
+import numpy as np
 import math
-import time
-from tqdm import tqdm
+import random
+import json
+import torch
+from torch.utils.data import Dataset, DataLoader
+from tqdm.auto import tqdm
+from matplotlib import pyplot as plt
+import youtokentome as yttm
+import sys
+from tokenizer import tokenize
+from classes import WordData
+from classes import EncoderRNN_inside_class
+from classes import AttentionDecoder_inside_class
+from classes import My_seq2seq_attention
+from clssses import train
+from classes import evaluate
 
-nlp = Russian()
-russian_tokenizer = RussianTokenizer(nlp, MERGE_PATTERNS)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-TEXT = torchtext.data.Field(tokenize = net.tokenize_ru, lower=True, init_token = '<sos>', 
-            eos_token = '<eos>', fix_length = 20)
-fields = [('src', TEXT), ('trg', TEXT)]
+tokenized_source, tokenized_target = tokenize(sys.argv[1])
 
-dialogue_data = torchtext.data.TabularDataset(
-    path='pairs450.tsv', format='tsv',
-    fields=fields)
+batch_size = 64
+context_len = 40
+target_len = 40
+pad_index = 0
+eos_index = 3
 
-SEED = 1234
+validation_start_index = int(len(tokenized_source) * 0.05)
 
-random.seed(SEED)
-torch.manual_seed(SEED)
-torch.backends.cudnn.deterministic = True
+train_dataset = WordData(context_list=tokenized_source[:-validation_start_index],
+                         questions_list = tokenized_target[:-validation_start_index],
+                         context_len=context_len, questions_len = target_len, pad_index=pad_index, eos_index=eos_index)
 
- 
-train_data, test_data = dialogue_data.split(split_ratio=0.95)
-train_data, valid_data = train_data.split(split_ratio=0.95)
-
-TEXT.build_vocab(train_data, min_freq = 3)
-print(f"Unique tokens in vocabulary: {len(TEXT.vocab)}")
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-BATCH_SIZE = 8
-
-train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
-    (train_data, valid_data, test_data), 
-    batch_size = BATCH_SIZE, 
-    device = device, sort = False)
+validation_dataset = WordData(context_list=tokenized_source[-validation_start_index:],
+                              questions_list = tokenized_target[-validation_start_index:],
+                         context_len=context_len, questions_len = target_len, pad_index=pad_index, eos_index=eos_index)
 
 
-INPUT_DIM = len(TEXT.vocab)
-OUTPUT_DIM = len(TEXT.vocab)
-ENC_EMB_DIM = 256
-DEC_EMB_DIM = 256
-HID_DIM = 512
-N_LAYERS = 2
-ENC_DROPOUT = 0.5
-DEC_DROPOUT = 0.5
+pad_idx = tokenizer.vocab().index("<PAD>")
+eos_idx = tokenizer.vocab().index("<EOS>")
+sos_idx = tokenizer.vocab().index("<BOS>")
+# Size of embedding_dim should match the dim of pre-trained word embeddings!
 
-enc = net.Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
-dec = net.Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
+embedding_dim = 300
+hidden_dim = 300
+vocab_size = len(tokenizer.vocab())
+model = My_seq2seq_attention(embedding_dim,
+                 hidden_dim, 
+                 vocab_size, 
+                 device, pad_idx, eos_idx, sos_idx).to(device)
+optimizer = optim.Adam([param for param in model.parameters() if param.requires_grad == True], lr=1.0e-3)
+criterion = nn.CrossEntropyLoss(ignore_index = pad_idx)
 
-model = net.Seq2Seq(enc, dec, device).to(device)
-model.apply(net.init_weights)
-
-optimizer = optim.Adam(model.parameters())
-
-PAD_IDX = TEXT.vocab.stoi['<pad>']
-criterion = nn.CrossEntropyLoss(ignore_index = PAD_IDX)
-
-N_EPOCHS = 10
-CLIP = 1
-
-best_valid_loss = float('inf')
-for epoch in tqdm(range(N_EPOCHS)):
-    start_time = time.time()
-    train_loss = net.train(model, train_iterator, optimizer, criterion, CLIP)
-    valid_loss = net.evaluate(model, valid_iterator, criterion)
+N_EPOCHS = 6
+train_losses = []
+for epoch in range(N_EPOCHS):
+    train_loss = train(model, train_loader, criterion, optimizer, epoch)
+#     print (train_loss)
+    train_losses.append(train_loss)
+    if min(train_losses) == train_loss and len(train_losses) > 1:
+        torch.save(model.state_dict, "best_seq2seq_attention")
+        torch.save(optimizer.state_dict, "best_Adam_state_dict_attention")
     
-    end_time = time.time()
+    torch.save(model.state_dict, "last_seq2seq_attention")
+    torch.save(optimizer.state_dict, "Adam_state_dict_attention")
     
-    epoch_mins, epoch_secs = epoch_time(start_time, end_time)
+    #early stopping
+    validation_losses = []
+    test_loss = evaluate(model, validation_loader)
+    validation_losses.append(test_loss)
     
-    name=str(epoch)+'_tut1-model.pt'
-    torch.save(model.state_dict(), name)
-    
-    print(f'Epoch: {epoch+1:02} | Time: {epoch_mins}m {epoch_secs}s')
-    print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
-    print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f}')
+    if len(validation_losses) > 1 and validation_losses[epoch] > validation_losses[epoch-1]:
+        print("stop")
+        break
+#     break
