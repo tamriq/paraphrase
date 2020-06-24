@@ -1,3 +1,5 @@
+import torch
+
 class SequenceBucketingData(torch.utils.data.Dataset):
     
     def __init__(self, data, max_len, pad_index, eos_index, bos_index):
