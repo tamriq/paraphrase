@@ -1,1 +1,6 @@
 torch
+mlflow
+pandas
+numpy
+youtokentome
+tqdm
