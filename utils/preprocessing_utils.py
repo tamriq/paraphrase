@@ -66,20 +66,21 @@ class Tokenizer:
 
     def __init__(self, data: pd.DataFrame, vocab_size: int, run_ver: str):
         """
+        Initialize Tokenizer class.
 
-        :param dataset_name:
-        :param vocab_size:
+        :param dataset_name: the name of the dataset
+        :param vocab_size: the overall number of BPE-tokens to tokenize data into
         """
         self.data = data
         bpe_file_name = self.write_bpe_txt(data, run_ver)
         self.bpe, self.bpe_path = self.train(run_ver, bpe_file_name, vocab_size)
 
-    def run(self, bpe_batch_size: int = 256, shuffle: bool = True):
+    def run(self, bpe_batch_size: int = 256):
         """
+        Tokenize the sentence pairs.
 
-        :param shuffle:
         :param bpe_batch_size:
-        :return:
+        :return: the sequence of the tokenized pairs
         """
         tokenized_src = []
         tokenized_trg = []
@@ -96,18 +97,18 @@ class Tokenizer:
             tokenized_trg.extend(src_batch)
         # Combine back into pairs.
         tokenized_pairs = [i for i in zip(tokenized_src, tokenized_trg)]
-        if shuffle:
-            random.shuffle(tokenized_pairs)
+        random.shuffle(tokenized_pairs)
         return tokenized_pairs
 
     @staticmethod
     def train(run_ver: str, bpe_file_name: str, vocab_size: int):
         """
+        Fit BPE Tokenizer to the data.
 
-        :param run_ver:
-        :param bpe_file_name:
-        :param vocab_size:
-        :return:
+        :param run_ver: the name of the run
+        :param bpe_file_name: the name of the .txt file with the data prepared for BPE
+        :param vocab_size: the overall number of BPE-tokens to tokenize data into
+        :return: BPE model, the name of the file with the model
         """
         model_path = f"bpe_{run_ver}.model"
         yttm.BPE.train(data=bpe_file_name, vocab_size=vocab_size, model=model_path)
@@ -118,10 +119,11 @@ class Tokenizer:
     @staticmethod
     def write_bpe_txt(data: pd.DataFrame, data_name: str) -> str:
         """
+        Rewrite data to the text format to prepare it to BPE training.
 
         :param data: data in dataframe format
-        :param data_name: the filename of the dataset
-        :return:
+        :param data_name: the data in .txt prepared to BPE Tokenizer training
+        :return: the name of the file with data
         """
         err = 0
         bpe_file_name = f"for_bpe_{data_name}.txt"
@@ -142,25 +144,48 @@ class Tokenizer:
         return bpe_file_name
 
 
-class Loader:
+class DataProcessor:
+    """
+    Applies the whole cycle of pre-processing to the specified dataset.
+    """
     def __init__(self, data_config: Dict[str, Any], run_ver: str, test_run: bool):
         self.data_config = data_config
+        # Load the data according to the name and location of the dataset.
         data = self.load_data(data_config["dataset_name"], data_config["dataset_dir"], test_run)
+        # Train tokenizer on the data.
         self.tokenizer = Tokenizer(data, data_config["vocab_size"], run_ver)
 
     def run(self):
+        """
+        Prepare the data for the training process.
+            - tokenize the data
+            - separate the sequence of the tokenized pairs into batches
+            - split the data into train and validation parts
+            - construct iterable DataLoader instances
+
+        :return: iterable datasets for train and valid data
+        """
+        # Tokenize the data.
         tokenized_sequence = self.tokenizer.run()
+        # Split the data into batches.
         batches = self.batch_sequence(tokenized_sequence, self.data_config["batch_size"],
                                       self.data_config["sequence_bucketing"])
         random.shuffle(batches)
         # Compute the start index for validation dataset.
         split_index = int(len(batches) * self.data_config["train_val_proportion"])
-        # Wrap pytorch DataLoaders around the batches.
+        # Wrap pytorch DataLoaders around the train batches.
         train_loader = self._init_loader(batches[:-split_index])
+        # Wrap pytorch DataLoaders around the validation batches.
         validation_loader = self._init_loader(batches[-split_index:])
         return train_loader, validation_loader
 
     def _init_loader(self, batch_split):
+        """
+        Initialize SequenceBucketingData with the batched sequence.
+
+        :param batch_split: batched sequence
+        :return: pytorch DataLoader sampler
+        """
         return SequenceBucketingData(batch_split, self.data_config["max_len"],
                                      self.data_config["pad_idx"],
                                      self.data_config["eos_idx"],
@@ -171,12 +196,13 @@ class Loader:
         """
         Load the data.
 
-        :param test_run:
         :param name: the name of the dataset
-            - 'backed' for the corpus of the backtranslated pairs
+            - 'backed' for the corpus of the back translated pairs
             - 'news' for the corpus of the paired news titles
             - 'subtitles' for the paraphrase corpus of subtitles
-        :param dir_path:
+        :param dir_path: the path to the directory containing the dataset
+        :param test_run: whether the volume of the data need to be decreased
+            to make a test run
         :return: data in DataFrame format
         """
         name = name.strip()
@@ -185,15 +211,17 @@ class Loader:
         df = pd.read_csv(tsv_data_path, sep='\t', header=None, error_bad_lines=False)
         # Drop Nans.
         df = df.dropna()
-        # Shuffle data.
+        # Shuffle the data.
         df = df.sample(frac=1).reset_index(drop=True)
         if test_run:
+            # Decrease the volume of the data if it's a test run.
             df = df[:int(df.shape[0] * 0.001)]
         return df
 
     @staticmethod
     def batch_sequence(sequence, batch_size: int, sort_by_src: bool):
         """
+        Separate the sequence into batches of the specified size.
 
         :param sequence:
         :param batch_size:
@@ -212,10 +240,9 @@ class Loader:
         return sequence_batches
 
 
-def build_data(**config):
+def build_data(config):
     """"""
-    data_config = config["data"]
-    data_loader = Loader(data_config, config["meta"]["run_ver"], config["meta"]["test_run"])
+    data_processor = DataProcessor(config["data"], config["meta"]["run_ver"], config["meta"]["test_run"])
     # Tokenize the data and split it into batches.
-    train_loader, validation_loader = data_loader.run()
-    return (train_loader, validation_loader), data_loader.tokenizer.bpe_path
+    train_loader, validation_loader = data_processor.run()
+    return train_loader, validation_loader, data_processor.tokenizer.bpe_path

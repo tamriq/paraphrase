@@ -360,8 +360,12 @@ class Seq2Seq(nn.Module):
         return output, attention
 
 
-def build_model(**config):
-    # Initialize Encoder and Decoder instances.
+def _initialize_weights_xavier(model):
+    if hasattr(model, 'weight') and model.weight.dim() > 1:
+        nn.init.xavier_uniform_(model.weight.data)
+
+
+def build_model(config):
     model_parts = {"enc": Encoder, "dec": Decoder}
     for name, part in model_parts.items():
         model_parts[name] = part(config["data"]["vocab_size"],
@@ -373,15 +377,6 @@ def build_model(**config):
                                  config["device"])
     # Initialize the Transformer model and move it to the specified device.
     model = Seq2Seq(model_parts["enc"], model_parts["dec"], config["data"]["pad_idx"],
-                    config["data"]["pad_idx"], config["device"]).to(config["device"])
-    # Count the number of trainable parameters.
-    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f'The Transformer model has {n_parameters:,} trainable parameters')
-    # Initialize the weights with xavier distribution.
+                         config["data"]["pad_idx"], config["device"]).to(config["device"])
     model.apply(_initialize_weights_xavier)
     return model
-
-
-def _initialize_weights_xavier(model):
-    if hasattr(model, 'weight') and model.weight.dim() > 1:
-        nn.init.xavier_uniform_(model.weight.data)
