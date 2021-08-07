@@ -2,12 +2,14 @@ import argparse
 import json
 
 import torch
-import utils.train_utils as tutils
+import utils.training as tutils
+import log_wrapper as logflow
 
 
 def run(config):
     if config["meta"]["mlflow_log"]:
-        trainer = tutils.MLflowWrapper(config)
+        # MLflowWrapper is a logging class that inherits from TrainHelper.
+        trainer = logflow.MLflowWrapper(config)
     else:
         trainer = tutils.TrainHelper(config)
     trainer.run()
