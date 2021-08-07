@@ -10,6 +10,7 @@ import utils.training as tutils
 
 class MLflowWrapper(tutils.TrainHelper):
     def __init__(self, configs):
+        # Inherit the attributes from TrainHelper class.
         super().__init__(configs)
         self._start_mlflow(self.configs["meta"]["run_ver"],
                            self.configs["meta"]["mlflow_dir"])
@@ -20,6 +21,7 @@ class MLflowWrapper(tutils.TrainHelper):
 
     def run(self):
         """
+        Train the model and log the training process with mlflow.
         """
         for epoch in range(self.n_epochs):
             epoch += 1
@@ -74,12 +76,6 @@ class MLflowWrapper(tutils.TrainHelper):
     def _log_preproc_data(self, run_ver, _bpe_path, train_loader, valid_loader):
         """
         Log all preprocessing results.
-
-        :param run_ver:
-        :param _bpe_path:
-        :param train_loader:
-        :param valid_loader:
-        :return:
         """
         # Log config file.
         mlflow.log_artifact(f"configs/{run_ver}.json", "preprocessing")
