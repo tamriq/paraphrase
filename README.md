@@ -1,4 +1,4 @@
-### PARAPHRASE PROJECT (GENERATION.
+### PARAPHRASE PROJECT (GENERATION, DETECTION)
 
 For test run of paraphrase generation training run the following command from /generation dir:
 
