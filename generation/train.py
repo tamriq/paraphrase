@@ -3,7 +3,7 @@ import json
 
 import torch
 import utils.training as tutils
-import log_wrapper as logflow
+import mlflow_logger as logflow
 
 
 def run(config):
@@ -11,7 +11,7 @@ def run(config):
         # MLflowWrapper is a logging class that inherits from TrainHelper.
         trainer = logflow.MLflowWrapper(config)
     else:
-        trainer = tutils.TrainHelper(config)
+        trainer = tutils.Trainer(config)
     trainer.run()
 
 

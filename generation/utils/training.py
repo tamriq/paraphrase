@@ -1,15 +1,16 @@
 import math
 import datetime
+from typing import Any, Dict
 
 import torch
 import numpy as np
 from tqdm.auto import tqdm
 
-from models import transformer
-import utils.preprocessing as putils
+from generation.models import transformer
+import generation.utils.preprocessing as putils
 
 
-class Trainer:
+class EpochTrainer:
     def __init__(self, model, train_loader, valid_loader, n_epochs, device, clip, lr, pad):
         self.model = model
         self.train_loader = train_loader
@@ -24,10 +25,7 @@ class Trainer:
 
     def train(self, epoch: int):
         """
-        Train epoch.
-
-        :param epoch:
-        :return:
+        Train Transformer epoch.
         """
         self.model.train()
         progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader),
@@ -69,7 +67,7 @@ class Trainer:
 
     def eval(self, epoch: int):
         """
-        Evaluate epoch.
+        Evaluate Transformer epoch.
 
         :param epoch:
         :return:
@@ -105,13 +103,17 @@ class Trainer:
         return epoch_loss / len(self.valid_loader)
 
 
-class TrainHelper(Trainer):
-    def __init__(self, configs):
+class Trainer(EpochTrainer):
+    def __init__(self, configs: Dict[str, Any]):
+        # Get initialized Transformer model.
         model = transformer.build_model(configs)
+        # Get data generators.
         train_loader, valid_loader, _bpe_path = putils.build_data(configs)
         self._bpe_path = _bpe_path
         self.configs = configs
+        # Set storage for training logs.
         self.training_log = {}
+        # Inherit the main training functionality from parent Trainer class.
         super().__init__(model,
                          train_loader,
                          valid_loader,
@@ -123,7 +125,7 @@ class TrainHelper(Trainer):
 
     def run(self):
         """
-
+        Train and save the model.
 
         :return:
         """
@@ -133,7 +135,13 @@ class TrainHelper(Trainer):
             self._print_metrics(epoch, log)
         torch.save(self.model.state_dict(), 'trained-model.pt')
 
-    def run_epoch(self, epoch: int):
+    def run_epoch(self, epoch: int) -> Dict[str, Any]:
+        """
+        Train one epoch.
+
+        :param epoch: the number of the epoch
+        :return: epoch log
+        """
         epoch_log = {}
         start_time = datetime.datetime.now()
         epoch_log["train_loss"] = self.train(epoch)
@@ -145,7 +153,14 @@ class TrainHelper(Trainer):
         return epoch_log
 
     @staticmethod
-    def _print_metrics(epoch, log):
+    def _print_metrics(epoch: int, log: Dict[str, Any]):
+        """
+        Print out the specific metrics.
+
+        :param epoch: the number of epoch
+        :param log: the metrics of the current epoch
+        :return:
+        """
         print(f'Epoch: {epoch:02} | Time: {log["duration"]}')
         print(f'\tTrain Loss: {log["train_loss"]:.3f} | Train PPL: {math.exp(log["train_loss"]):7.3f}')
         print(f'\t Val. Loss: {log["valid_loss"]:.3f} |  Val. PPL: {math.exp(log["valid_loss"]):7.3f}')
