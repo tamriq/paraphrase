@@ -1,5 +1,9 @@
-### PARAPHRASE GENERATION PROJECT 
+### PARAPHRASE PROJECT (GENERATION.
 
-Run training with CLI command: python3 train.py --model_config transformer_config.json
+For test run of paraphrase generation training run the following command from /generation dir:
+
+*python3 train.py --config configs/v0.2.json*
+
+Config files can be specified manually.
 
 Refactoring in progress.
